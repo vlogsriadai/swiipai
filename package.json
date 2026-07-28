@@ -16,6 +16,7 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "drizzle-orm": "0.45.2",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.27.0",
