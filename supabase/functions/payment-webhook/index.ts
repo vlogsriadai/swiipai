@@ -2,18 +2,24 @@ import { adminClient, json } from "../_shared/core.ts";
 
 const encoder = new TextEncoder();
 const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
-const safeEqual = (a: string, b: string) => a.length === b.length && a.split("").every((c, i) => c === b[i]);
+const safeEqual = (a: string, b: string) => {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i += 1) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+};
 
 async function verifyStripe(request: Request, body: string) {
   const secret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
   const signature = request.headers.get("stripe-signature");
   if (!secret || !signature) throw new Error("stripe_not_configured");
-  const parts = Object.fromEntries(signature.split(",").map((part) => part.split("=", 2)));
-  const timestamp = Number(parts.t);
+  const parts = signature.split(",").map((part) => part.split("=", 2));
+  const timestamp = Number(parts.find(([key]) => key === "t")?.[1]);
+  const signatures = parts.filter(([key]) => key === "v1").map(([, value]) => value);
   if (!timestamp || Math.abs(Date.now() / 1000 - timestamp) > 300) throw new Error("expired_signature");
   const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const expected = hex(await crypto.subtle.sign("HMAC", key, encoder.encode(`${timestamp}.${body}`)));
-  if (!parts.v1 || !safeEqual(expected, parts.v1)) throw new Error("invalid_signature");
+  if (!signatures.some((candidate) => safeEqual(expected, candidate))) throw new Error("invalid_signature");
   return JSON.parse(body);
 }
 
@@ -64,9 +70,28 @@ async function fulfilStripe(event: any) {
   const subscription = await response.json();
   if (!response.ok) throw new Error("stripe_subscription_lookup_failed");
   const metadata = subscription.metadata ?? {};
-  if (!metadata.user_id || !metadata.plan_slug) throw new Error("missing_subscription_metadata");
-  const period = invoice.lines?.data?.[0]?.period;
+  if (!metadata.user_id || !metadata.plan_slug || !metadata.order_id || !metadata.billing_period) {
+    throw new Error("missing_subscription_metadata");
+  }
   const client = adminClient();
+  const { data: order, error: orderError } = await client.from("orders")
+    .select("id,user_id,plan_id,total,currency,payment_status,plans!inner(slug,stripe_monthly_price_id,stripe_annual_price_id)")
+    .eq("id", metadata.order_id)
+    .eq("user_id", metadata.user_id)
+    .single();
+  if (orderError || !order) throw new Error("order_not_found");
+  const plan = Array.isArray(order.plans) ? order.plans[0] : order.plans;
+  const expectedPriceId = metadata.billing_period === "annual"
+    ? plan.stripe_annual_price_id
+    : plan.stripe_monthly_price_id;
+  const paidPriceId = subscription.items?.data?.[0]?.price?.id;
+  if (plan.slug !== metadata.plan_slug || !expectedPriceId || paidPriceId !== expectedPriceId) {
+    throw new Error("stripe_price_mismatch");
+  }
+  if ((invoice.currency ?? "").toUpperCase() !== String(order.currency).toUpperCase()) {
+    throw new Error("stripe_currency_mismatch");
+  }
+  const period = invoice.lines?.data?.[0]?.period;
   const { error } = await client.rpc("fulfil_subscription_invoice", {
     p_user: metadata.user_id, p_plan_slug: metadata.plan_slug, p_provider: "stripe",
     p_provider_invoice_id: invoice.id, p_provider_subscription_id: subscriptionId,
