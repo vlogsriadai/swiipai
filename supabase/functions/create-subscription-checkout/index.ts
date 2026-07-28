@@ -15,7 +15,7 @@ async function stripeCheckout(priceId: string, orderId: string, userId: string, 
     mode: "subscription",
     "line_items[0][price]": priceId,
     "line_items[0][quantity]": "1",
-    success_url: `${appUrl}/app/billing?checkout=success`,
+    success_url: `${appUrl}/app/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/pricing?checkout=cancelled`,
     client_reference_id: orderId,
     "metadata[user_id]": userId,
@@ -25,9 +25,16 @@ async function stripeCheckout(priceId: string, orderId: string, userId: string, 
     "subscription_data[metadata][user_id]": userId,
     "subscription_data[metadata][order_id]": orderId,
     "subscription_data[metadata][plan_slug]": plan,
+    "subscription_data[metadata][billing_period]": period,
   });
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST", headers: { authorization: `Bearer ${secret}`, "content-type": "application/x-www-form-urlencoded" }, body,
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${secret}`,
+      "content-type": "application/x-www-form-urlencoded",
+      "idempotency-key": `checkout-${orderId}`,
+    },
+    body,
   });
   const result = await response.json();
   if (!response.ok || !result.url) throw new Error(result.error?.message ?? "stripe_checkout_failed");
@@ -71,22 +78,33 @@ Deno.serve(async (request) => {
   try {
     const { client, user } = await requireUser(request);
     const input = Input.parse(await request.json());
-    const key = request.headers.get("idempotency-key") ?? crypto.randomUUID();
-    if (request.headers.has("idempotency-key")) idempotencyKey(request);
+    const key = idempotencyKey(request);
     const { data: plan, error } = await client.from("plans").select("*").eq("slug", input.plan_slug).eq("active", true).single();
     if (error || !plan) throw new Error("plan_unavailable");
     const total = input.billing_period === "annual" ? Number(plan.annual_price) * 12 : Number(plan.monthly_price);
+    const orderNumber = `SUB-${user.id}-${key}`;
+    const { data: existingOrder } = await client.from("orders")
+      .select("id,metadata")
+      .eq("order_number", orderNumber)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existingOrder?.metadata?.checkout_url) return json({ url: existingOrder.metadata.checkout_url });
+
     const { data: order, error: orderError } = await client.from("orders").insert({
-      order_number: `SUB-${Date.now()}-${key.slice(0, 8)}`, user_id: user.id, order_type: "subscription",
+      order_number: orderNumber, user_id: user.id, order_type: "subscription",
       plan_id: plan.id, subtotal: total, total, currency: plan.currency,
       payment_provider: input.provider, metadata: { billing_period: input.billing_period },
     }).select("id").single();
     if (orderError) throw orderError;
     const suffix = input.billing_period === "annual" ? "annual" : "monthly";
     const providerId = input.provider === "stripe" ? plan[`stripe_${suffix}_price_id`] : plan[`paypal_${suffix}_plan_id`];
+    if (!providerId) throw new Error(`${input.provider}_price_not_configured`);
     const url = input.provider === "stripe"
       ? await stripeCheckout(providerId, order.id, user.id, input.plan_slug, input.billing_period)
       : await paypalCheckout(providerId, order.id);
+    await client.from("orders").update({
+      metadata: { billing_period: input.billing_period, checkout_url: url },
+    }).eq("id", order.id).eq("user_id", user.id);
     return json({ url });
   } catch (error) {
     const message = error instanceof Error ? error.message : "checkout_failed";
