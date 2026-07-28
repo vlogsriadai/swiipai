@@ -22,6 +22,11 @@ Deno.serve(async (request) => {
     if (modelError || !model?.active || model.maintenance) return json({ error: "model_unavailable" }, 409);
     const { data: tool } = await client.from("tools").select("id").eq("slug", input.tool).eq("active", true).single();
     if (!tool) return json({ error: "tool_unavailable" }, 409);
+    const { data: entitled, error: entitlementError } = await client.rpc("can_use_generation", {
+      p_user: user.id, p_tool: input.tool, p_model: input.model,
+    });
+    if (entitlementError) throw entitlementError;
+    if (!entitled) return json({ error: "plan_upgrade_required" }, 403);
 
     const { data: job, error: jobError } = await client.from("generation_jobs").insert({
       user_id: user.id, tool_id: tool.id, model_id: model.id, status: "queued",
