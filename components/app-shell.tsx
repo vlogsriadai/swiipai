@@ -1,17 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  AlignJustify, ArrowRight, Bell, ChevronDown,
-  CloudUpload, Download, Ellipsis, Grid2X2, Heart, ImageIcon, Layers3,
-  Menu, Mic2, MoreHorizontal, PanelLeftClose, Play, Plus, Search, Settings2,
+  AlignJustify, ArrowRight, Bell, Bookmark, Box, Check, ChevronDown, Clock3,
+  CloudUpload, Download, Ellipsis, Folder, Grid2X2, Heart, ImageIcon, Layers3,
+  Lock, Menu, Mic2, MoreHorizontal, PanelLeftClose, Play, Plus, Search, Send, Settings2,
   SlidersHorizontal, Sparkles, Trash2, Upload, WandSparkles, X, Zap,
 } from "lucide-react";
 import { Logo, StatusPill } from "./brand";
 import { appNav, community, dashboardStats, tools } from "./data";
+import { getSupabaseBrowserClient } from "../lib/supabase-browser";
 
-function Sidebar({ path, collapsed, setCollapsed }: { path: string; collapsed: boolean; setCollapsed: (v: boolean) => void }) {
+type PlanSlug = "none" | "basic" | "pro" | "max";
+type Entitlements = { plan_slug: PlanSlug; credits: number; parallel_videos: number; parallel_images: number };
+const planRank: Record<PlanSlug, number> = { none: 0, basic: 1, pro: 2, max: 3 };
+const canUse = (current: PlanSlug, required: "basic" | "pro" | "max") => planRank[current] >= planRank[required];
+
+function Sidebar({ path, collapsed, setCollapsed, entitlements }: { path: string; collapsed: boolean; setCollapsed: (v: boolean) => void; entitlements: Entitlements }) {
   return (
     <aside className={collapsed ? "app-sidebar collapsed" : "app-sidebar"}>
       <div className="sidebar-brand"><Logo compact={collapsed} /><button onClick={() => setCollapsed(!collapsed)}><PanelLeftClose size={17} /></button></div>
@@ -20,7 +26,7 @@ function Sidebar({ path, collapsed, setCollapsed }: { path: string; collapsed: b
         {appNav.map(({ label, href, icon: Icon }) => <Link className={path === href ? "active" : ""} href={href} key={href}><Icon size={18} /><span>{label}</span></Link>)}
       </nav>
       <div className="sidebar-bottom">
-        <Link href="/app/billing"><Sparkles size={16} /><div><b>2,480 credits</b><span>Pro plan</span></div></Link>
+        <Link href="/app/billing"><Sparkles size={16} /><div><b>{entitlements.credits.toLocaleString()} credits</b><span>{entitlements.plan_slug === "none" ? "No active plan" : `${entitlements.plan_slug[0].toUpperCase()}${entitlements.plan_slug.slice(1)} plan`}</span></div></Link>
         <Link href="/app/settings"><Settings2 size={18} /><span>Settings</span></Link>
         <div className="user-mini"><span>RT</span><div><b>Rayad Temo</b><small>rayad@studio.ai</small></div><MoreHorizontal size={16} /></div>
       </div>
@@ -82,12 +88,50 @@ function Dashboard() {
   );
 }
 
-function Generator({ type }: { type: "video" | "image" | "audio" | "motion" | "lip" | "effects" }) {
+function Generator({ type, plan }: { type: "video" | "image" | "audio" | "motion" | "lip" | "effects"; plan: PlanSlug }) {
   const [mode, setMode] = useState(type === "video" ? "Text to Video" : type === "image" ? "Text to Image" : type === "audio" ? "Text to Speech" : "Create");
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
+  const [job, setJob] = useState<{ id?: string; status?: string; error?: string } | null>(null);
   const title = { video: "AI Video", image: "AI Image", audio: "AI Audio", motion: "Motion Control", lip: "Lip Sync", effects: "AI Effects" }[type];
+  const requiredPlan = type === "lip" || type === "effects" ? "pro" : "basic";
+  if (!canUse(plan, requiredPlan)) return <section className="entitlement-lock"><span><Lock size={25}/></span><h2>{title} requires {requiredPlan === "pro" ? "Pro or Max" : "an active plan"}</h2><p>Your dashboard only unlocks tools included with the subscription confirmed by Stripe or PayPal.</p><Link className="primary" href="/pricing">Compare plans</Link></section>;
   const modes = type === "video" ? ["Text to Video", "Image to Video", "Start / End", "Extend"] : type === "image" ? ["Text to Image", "Image to Image", "Inpaint", "Product"] : type === "audio" ? ["Text to Speech", "Sound Effects", "Voice Clone", "Enhance"] : [title];
+  async function generate() {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return setJob({ error: "Supabase connection is not configured." });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      location.href = "/login";
+      return;
+    }
+    setRunning(true);
+    setJob(null);
+    const model = type === "image" ? "swiip-image" : type === "audio" ? "swiip-audio" : "swiip-video";
+    const { data, error } = await supabase.functions.invoke("create-generation", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: {
+        tool: `${type}-${mode.toLowerCase().replaceAll(" ", "-").replaceAll("/", "-")}`,
+        model,
+        prompt,
+        settings: { mode, aspect_ratio: type === "audio" ? null : "16:9", quality: "pro" },
+        visibility: "private",
+      },
+    });
+    if (error) {
+      let message = error.message;
+      try {
+        if ("context" in error && error.context instanceof Response) {
+          const payload = await error.context.json();
+          message = payload.error ?? message;
+        }
+      } catch {}
+      setJob({ error: message });
+      setRunning(false);
+      return;
+    }
+    setJob({ id: data.job_id, status: data.status });
+  }
   return (
     <div className="generator-page">
       <div className="generator-tabs">{modes.map((item) => <button className={mode === item ? "active" : ""} onClick={() => setMode(item)} key={item}>{item}</button>)}</div>
@@ -104,11 +148,12 @@ function Generator({ type }: { type: "video" | "image" | "audio" | "motion" | "l
           </div>
           <details className="advanced"><summary><SlidersHorizontal size={16} /> Advanced settings <ChevronDown size={15} /></summary><div className="range-row"><span>Creativity</span><input type="range" /></div><div className="range-row"><span>Prompt adherence</span><input type="range" /></div></details>
           <div className="cost-row"><span>Estimated cost</span><b><Sparkles size={14} /> {type === "image" ? "8" : type === "audio" ? "12" : "40"} credits</b></div>
-          <button className="primary full" onClick={() => setRunning(true)} disabled={!prompt || running}>{running ? <><span className="spinner" /> Preparing generation...</> : <><Sparkles size={17} /> Generate {title.replace("AI ", "")}</>}</button>
+          <button className="primary full" onClick={generate} disabled={!prompt || running}>{running ? <><span className="spinner" /> Preparing generation...</> : <><Sparkles size={17} /> Generate {title.replace("AI ", "")}</>}</button>
+          {job?.error && <p className="generation-error">{job.error === "model_unavailable" ? "This AI provider is not connected yet. Add its server API key to activate generation." : job.error}</p>}
         </section>
         <section className="result-workspace">
           <div className="workspace-head"><span>Output</span><div><button><Grid2X2 size={16} /></button><button><Download size={16} /></button></div></div>
-          {running ? <div className="processing-state"><div className="processing-visual"><span className="scan-line" /><Sparkles /></div><h3>Your idea is taking shape</h3><p>Validating settings and preparing the generation queue.</p><div className="progress-track"><i /></div><small>Mock mode · No credits were charged</small></div> :
+          {running ? <div className="processing-state"><div className="processing-visual"><span className="scan-line" /><Sparkles /></div><h3>Your idea is taking shape</h3><p>Job {job?.id ? `#${job.id.slice(0, 8)}` : ""} is securely queued.</p><div className="progress-track"><i /></div><small>{job?.status ?? "Validating your credits and provider availability…"}</small></div> :
           <div className="empty-workspace"><div className="empty-orbit"><Sparkles /><i /><i /></div><h3>Your canvas is ready</h3><p>Describe something on the left, customise your settings and generate your first result.</p><div className="prompt-suggestions">{["Dreamlike editorial", "Cinematic product shot", "Slow orbit camera"].map((x) => <button onClick={() => setPrompt(x)} key={x}>{x}</button>)}</div></div>}
         </section>
       </div>
@@ -116,8 +161,13 @@ function Generator({ type }: { type: "video" | "image" | "audio" | "motion" | "l
   );
 }
 
-function CreateHub() {
-  return <div className="page-pad create-hub"><div className="page-title"><span className="eyebrow plain">CREATE</span><h1>What do you want to make?</h1><p>Start with the medium—or just follow the idea.</p></div><div className="create-grid">{tools.map(({ title, desc, icon: Icon, tint, cost }) => <Link className={`create-tile ${tint}`} href={title.includes("Video") ? "/app/video" : title.includes("Image") ? "/app/image" : title.includes("Audio") ? "/app/audio" : title.includes("Motion") ? "/app/motion-control" : "/app/create"} key={title}><div><Icon /><span className="preview-object" /></div><h3>{title}</h3><p>{desc}</p><small><Sparkles size={12} /> From {cost} credits <ArrowRight size={14} /></small></Link>)}</div></div>;
+function CreateHub({ plan }: { plan: PlanSlug }) {
+  return <div className="page-pad create-hub"><div className="page-title"><span className="eyebrow plain">CREATE</span><h1>What do you want to make?</h1><p>Only tools included in your verified subscription are available.</p></div><div className="create-grid">{tools.map(({ title, desc, icon: Icon, tint, cost, minPlan }) => {
+    const href = title.includes("Video") ? "/app/video" : title.includes("Image") ? "/app/image" : title.includes("Audio") ? "/app/audio" : title.includes("Motion") ? "/app/motion-control" : title.includes("Lip") ? "/app/lip-sync" : "/app/create";
+    const allowed = canUse(plan, minPlan);
+    const content = <><div><Icon /><span className="preview-object" /></div>{!allowed && <span className="tool-lock"><Lock size={11}/>{minPlan === "pro" ? "Pro" : "Plan required"}</span>}<h3>{title}</h3><p>{desc}</p><small><Sparkles size={12} /> From {cost} credits {allowed ? <ArrowRight size={14} /> : null}</small></>;
+    return allowed ? <Link className={`create-tile ${tint}`} href={href} key={title}>{content}</Link> : <article className={`create-tile locked-tool ${tint}`} key={title}>{content}<Link href="/pricing">Upgrade to unlock</Link></article>;
+  })}</div></div>;
 }
 
 function LibraryPage({ page }: { page: "Projects" | "Assets" | "History" | "Favourites" | "Collections" }) {
@@ -147,15 +197,23 @@ function CommunityPage() {
 export function UserApp({ path }: { path: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const [entitlements, setEntitlements] = useState<Entitlements>({ plan_slug: "none", credits: 0, parallel_videos: 0, parallel_images: 0 });
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    void supabase.rpc("get_my_entitlements").then(({ data }) => {
+      if (data && typeof data === "object") setEntitlements(data as Entitlements);
+    });
+  }, []);
   const title = useMemo(() => appNav.find((x) => x.href === path)?.label ?? path.split("/").pop()?.replace("-", " ") ?? "Workspace", [path]);
   let content: React.ReactNode = <Dashboard />;
-  if (path === "/app/create") content = <CreateHub />;
-  else if (path === "/app/video") content = <Generator type="video" />;
-  else if (path === "/app/image") content = <Generator type="image" />;
-  else if (path === "/app/audio") content = <Generator type="audio" />;
-  else if (path === "/app/motion-control") content = <Generator type="motion" />;
-  else if (path === "/app/lip-sync") content = <Generator type="lip" />;
-  else if (path === "/app/effects") content = <Generator type="effects" />;
+  if (path === "/app/create") content = <CreateHub plan={entitlements.plan_slug} />;
+  else if (["/app/video", "/app/director", "/app/video-editor"].includes(path)) content = <Generator type="video" plan={entitlements.plan_slug} />;
+  else if (["/app/image", "/app/image-editor", "/app/upscale", "/app/characters", "/app/worlds", "/app/brand-kit"].includes(path)) content = <Generator type="image" plan={entitlements.plan_slug} />;
+  else if (["/app/audio", "/app/music", "/app/sound-effects"].includes(path)) content = <Generator type="audio" plan={entitlements.plan_slug} />;
+  else if (path === "/app/motion-control") content = <Generator type="motion" plan={entitlements.plan_slug} />;
+  else if (path === "/app/lip-sync") content = <Generator type="lip" plan={entitlements.plan_slug} />;
+  else if (path === "/app/effects") content = <Generator type="effects" plan={entitlements.plan_slug} />;
   else if (["projects", "assets", "history", "favourites", "collections"].some((x) => path.endsWith(x))) content = <LibraryPage page={(title.charAt(0).toUpperCase() + title.slice(1)) as "Projects"} />;
   else if (path === "/app/community") content = <CommunityPage />;
   else if (["/app/billing", "/app/credits"].includes(path)) content = <BillingPage />;
@@ -164,8 +222,8 @@ export function UserApp({ path }: { path: string }) {
   return (
     <main className="app-shell">
       <div className={mobile ? "mobile-sidebar-cover open" : "mobile-sidebar-cover"} onClick={() => setMobile(false)} />
-      <div className={mobile ? "mobile-sidebar-wrap open" : "mobile-sidebar-wrap"}><button className="close-mobile" onClick={() => setMobile(false)}><X /></button><Sidebar path={path} collapsed={false} setCollapsed={() => setMobile(false)} /></div>
-      <Sidebar path={path} collapsed={collapsed} setCollapsed={setCollapsed} />
+      <div className={mobile ? "mobile-sidebar-wrap open" : "mobile-sidebar-wrap"}><button className="close-mobile" onClick={() => setMobile(false)}><X /></button><Sidebar path={path} collapsed={false} setCollapsed={() => setMobile(false)} entitlements={entitlements} /></div>
+      <Sidebar path={path} collapsed={collapsed} setCollapsed={setCollapsed} entitlements={entitlements} />
       <div className="app-main"><AppTopbar title={title} openMobile={() => setMobile(true)} />{content}</div>
     </main>
   );
