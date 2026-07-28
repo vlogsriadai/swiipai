@@ -152,6 +152,46 @@ function HeroVisual() {
   );
 }
 
+function SeedanceSpotlight() {
+  return (
+    <section className="seedance-spotlight section" aria-labelledby="seedance-title">
+      <div className="seedance-aura seedance-aura-left" />
+      <div className="seedance-aura seedance-aura-right" />
+      <div className="seedance-console">
+        <div className="seedance-console-rim">
+          <div className="seedance-screen">
+            <video
+              className="seedance-video"
+              src="/videos/seedance-swiipai-4k.mp4"
+              poster="/images/seedance-swiipai-poster.jpg"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              aria-label="Animated Seedance 2.0 cinematic preview"
+            />
+            <div className="seedance-scanlines" />
+            <div className="seedance-screen-glow" />
+            <span className="seedance-4k">4K</span>
+            <div className="seedance-copy">
+              <span className="seedance-kicker"><i /> NEW VIDEO MODEL</span>
+              <h2 id="seedance-title">Seedance 2.0</h2>
+              <span className="seedance-resolution">Now in 4K</span>
+              <p>Already available on <strong>SwiipAI</strong></p>
+              <Link href="/app/video" className="seedance-cta">
+                Try now <ArrowRight size={18} />
+              </Link>
+            </div>
+          </div>
+        </div>
+        <span className="seedance-status"><i /> LIVE MODEL</span>
+        <span className="seedance-spec">CINEMATIC VIDEO · ULTRA HD</span>
+      </div>
+    </section>
+  );
+}
+
 const modelStudios = [
   { name: "Grok", company: "xAI", logo: "https://cdn.simpleicons.org/x/FFFFFF", href: "/app/video", type: "Video + image", status: "API ready" },
   { name: "Gemini", company: "Google", logo: "https://cdn.simpleicons.org/googlegemini/FFFFFF", href: "/app/create", type: "Multimodal", status: "API ready" },
@@ -191,6 +231,8 @@ export function HomePage({ light, toggleTheme }: { light: boolean; toggleTheme: 
         <section className="trust-strip">
           <span>ONE WORKSPACE</span><b>VIDEO</b><i /> <b>IMAGE</b><i /> <b>AUDIO</b><i /> <b>MOTION</b><i /> <b>CANVAS</b>
         </section>
+
+        <SeedanceSpotlight />
 
         <section className="section model-studios">
           <div className="section-heading">
