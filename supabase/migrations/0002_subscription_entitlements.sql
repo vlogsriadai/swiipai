@@ -123,3 +123,24 @@ revoke all on function public.fulfil_subscription_invoice(uuid,text,text,text,te
   from public, anon, authenticated;
 grant execute on function public.fulfil_subscription_invoice(uuid,text,text,text,text,timestamptz,timestamptz)
   to service_role;
+
+-- Lock down every table in the exposed public schema. Catalogue rows are the
+-- only anonymous reads needed by the website; user-owned rows keep the
+-- ownership policies defined in the core migration.
+do $$
+declare r record;
+begin
+  for r in select schemaname, tablename from pg_tables where schemaname='public'
+  loop
+    execute format('alter table %I.%I enable row level security', r.schemaname, r.tablename);
+  end loop;
+end $$;
+
+create policy plans_public_read on public.plans for select to anon, authenticated using (active);
+create policy plan_features_public_read on public.plan_features for select to anon, authenticated
+  using (exists(select 1 from public.plans p where p.id=plan_id and p.active));
+create policy tools_public_read on public.tools for select to anon, authenticated using (active);
+create policy models_public_read on public.ai_models for select to anon, authenticated using (active);
+
+grant select on public.plans, public.plan_features, public.tools, public.ai_models to anon, authenticated;
+revoke all on function public.handle_new_user() from public, anon, authenticated;
