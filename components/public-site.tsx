@@ -421,8 +421,10 @@ export function PricingPage({ light, toggleTheme }: { light: boolean; toggleThem
     }
     setCheckout(`${planSlug}:${provider}`);
     setCheckoutError("");
+    const idempotencyKey = crypto.randomUUID();
     const { data, error } = await supabase.functions.invoke("create-subscription-checkout", {
       body: { plan_slug: planSlug, provider, billing_period: annual ? "annual" : "monthly" },
+      headers: { "idempotency-key": idempotencyKey },
     });
     if (error || !data?.url) {
       setCheckoutError(error?.message || data?.error || "Checkout is temporarily unavailable.");
