@@ -11,6 +11,7 @@ import {
 import { Logo, StatusPill } from "./brand";
 import { appNav, community, dashboardStats, tools } from "./data";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser";
+import { functionErrorMessage } from "../lib/function-error";
 
 type PlanSlug = "none" | "basic" | "pro" | "max";
 type Entitlements = { plan_slug: PlanSlug; credits: number; parallel_videos: number; parallel_images: number };
@@ -126,13 +127,7 @@ function Generator({ type, plan }: { type: "video" | "image" | "audio" | "motion
       },
     });
     if (error) {
-      let message = error.message;
-      try {
-        if ("context" in error && error.context instanceof Response) {
-          const payload = await error.context.json();
-          message = payload.error ?? message;
-        }
-      } catch {}
+      const message = await functionErrorMessage(error, "Generation could not start. Please try again.");
       setJob({ error: message });
       setRunning(false);
       return;
@@ -156,7 +151,7 @@ function Generator({ type, plan }: { type: "video" | "image" | "audio" | "motion
           <details className="advanced"><summary><SlidersHorizontal size={16} /> Advanced settings <ChevronDown size={15} /></summary><div className="range-row"><span>Creativity</span><input type="range" /></div><div className="range-row"><span>Prompt adherence</span><input type="range" /></div></details>
           <div className="cost-row"><span>Estimated cost</span><b><Sparkles size={14} /> {type === "image" ? "8" : type === "audio" ? "12" : "40"} credits</b></div>
           <button className="primary full" onClick={generate} disabled={!prompt || running}>{running ? <><span className="spinner" /> Preparing generation...</> : <><Sparkles size={17} /> Generate {title.replace("AI ", "")}</>}</button>
-          {job?.error && <p className="generation-error">{job.error === "model_unavailable" ? "This AI provider is not connected yet. Add its server API key to activate generation." : job.error}</p>}
+          {job?.error && <p className="generation-error">{job.error}</p>}
         </section>
         <section className="result-workspace">
           <div className="workspace-head"><span>Output</span><div><button><Grid2X2 size={16} /></button><button><Download size={16} /></button></div></div>
