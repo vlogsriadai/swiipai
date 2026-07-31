@@ -1,4 +1,4 @@
-import { adminClient, json } from "../_shared/core.ts";
+import { adminClient, json, preflight } from "../_shared/core.ts";
 
 const encoder = new TextEncoder();
 const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -125,6 +125,8 @@ async function fulfilPayPal(event: any, auth: { base: string; token: string }) {
 }
 
 Deno.serve(async (request) => {
+  const options = preflight(request);
+  if (options) return options;
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   const provider = new URL(request.url).searchParams.get("provider");
   if (provider !== "stripe" && provider !== "paypal") return json({ error: "invalid_provider" }, 400);
