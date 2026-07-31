@@ -1,5 +1,5 @@
 import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
-import { cors, idempotencyKey, json, requireUser } from "../_shared/core.ts";
+import { idempotencyKey, json, preflight, publicError, requireUser } from "../_shared/core.ts";
 
 const Input = z.object({
   tool: z.string().min(2).max(80),
@@ -10,7 +10,8 @@ const Input = z.object({
 });
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const options = preflight(request);
+  if (options) return options;
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   try {
     const { client, user } = await requireUser(request);
@@ -48,7 +49,8 @@ Deno.serve(async (request) => {
     }
     return json({ job_id: job.id, status: "queued" }, 202);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "request_failed";
-    return json({ error: message }, message === "unauthorized" ? 401 : 400);
+    console.error("create-generation failed", error);
+    const failure = publicError(error, "request_failed");
+    return json({ error: failure.message }, failure.status);
   }
 });
