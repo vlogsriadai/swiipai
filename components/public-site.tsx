@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight, AudioLines, Braces, Check, ChevronDown, CirclePlay, Clapperboard,
   FolderKanban, Globe2, Heart, ImageIcon, ImagePlus, Menu, Move3d, Palette,
@@ -207,6 +207,53 @@ const showcaseProjects = [
   { title: "Future Heritage", model: "Sora", type: "image", image: "/showcase/desert-couture.png", prompt: "North African future fashion, natural skin texture and luxury lighting.", href: "/app/image" },
 ];
 
+const omniProjects = [
+  { title: "Neon Velocity", category: "Marketing", creator: "Maya Chen", handle: "@mayamotion", avatar: "MC", prompt: "A midnight-black hypercar racing through a rain-soaked futuristic city, neon green reflections, low tracking camera, cinematic motion blur, premium commercial lighting.", tone: "cyan" },
+  { title: "Desert Muse", category: "Fashion", creator: "Lina Noor", handle: "@linanoor", avatar: "LN", prompt: "Editorial portrait of a Moroccan model crossing sculpted desert dunes at golden hour, flowing emerald fabric, slow orbit camera, realistic skin, luxury campaign mood.", tone: "amber" },
+  { title: "Chrome Bloom", category: "Concept Art", creator: "Alex Vale", handle: "@alexvale", avatar: "AV", prompt: "A chrome flower unfolding in zero gravity, microscopic water droplets, black studio background, macro lens, elegant slow motion and vivid green caustic light.", tone: "violet" },
+  { title: "After the Rain", category: "Film & Stories", creator: "Sofia Reed", handle: "@sofireed", avatar: "SR", prompt: "A quiet cinematic street after summer rain, one woman under a transparent umbrella, reflections moving naturally, handheld 35mm camera, intimate film grain.", tone: "blue" },
+  { title: "Liquid Future", category: "Animation", creator: "Noah Kim", handle: "@noahframes", avatar: "NK", prompt: "Translucent liquid glass shapes transforming into a futuristic sneaker, seamless morph animation, dark gallery, green rim light, precise product cinematography.", tone: "green" },
+  { title: "Atlas Sky", category: "Mood", creator: "Yasmine Idris", handle: "@yasmineidris", avatar: "YI", prompt: "An aerial journey above the Atlas Mountains at sunrise, clouds spilling through the valleys, majestic slow drone push, photoreal detail, hopeful atmosphere.", tone: "rose" },
+  { title: "Signal Lost", category: "Micro Drama", creator: "Eli Stone", handle: "@elistone", avatar: "ES", prompt: "A lone astronaut receives an impossible message inside a dim spacecraft, subtle facial emotion, flickering green monitors, slow dolly in, tense science-fiction drama.", tone: "slate" },
+  { title: "Pulse", category: "Music Video", creator: "Juno Rae", handle: "@junorae", avatar: "JR", prompt: "A dancer moving through volumetric laser tunnels synchronized to an electronic beat, energetic camera swings, crisp silhouettes, glossy black and neon green palette.", tone: "lime" },
+  { title: "Tiny Kingdom", category: "Animation", creator: "Omar Bell", handle: "@omarbell", avatar: "OB", prompt: "A miniature city waking inside a moss-covered terrarium, tiny commuters and glowing windows, playful tilt-shift lens, warm morning light, detailed animated world.", tone: "forest" },
+  { title: "Orbital Coffee", category: "Advertising", creator: "Nora West", handle: "@norawest", avatar: "NW", prompt: "A premium coffee cup floating in a space station while crema forms a perfect galaxy, smooth product rotation, dramatic sun rim, clean luxury advertisement.", tone: "copper" },
+];
+
+function OmniInspirations() {
+  const [active, setActive] = useState<(typeof omniProjects)[number] | null>(null);
+  const [category, setCategory] = useState("All");
+  const categories = ["All", "Marketing", "Film & Stories", "Music Video", "Animation", "Fashion", "Mood"];
+  const visible = category === "All" ? omniProjects : omniProjects.filter((item) => item.category === category);
+  useEffect(() => {
+    if (!active) return;
+    const close = (event: KeyboardEvent) => event.key === "Escape" && setActive(null);
+    document.body.classList.add("modal-open");
+    window.addEventListener("keydown", close);
+    return () => { document.body.classList.remove("modal-open"); window.removeEventListener("keydown", close); };
+  }, [active]);
+  return <section className="section omni-inspirations" aria-labelledby="omni-title">
+    <div className="omni-heading"><div><span className="eyebrow plain">MADE WITH SWIIPAI OMNI</span><h2 id="omni-title">Infinite ideas. One intelligent director.</h2></div><p>Explore ten community films made with Omni, then reuse the exact creative setup in one click.</p></div>
+    <div className="omni-tabs" role="tablist" aria-label="Filter Omni videos">{categories.map((item) => <button role="tab" aria-selected={category === item} className={category === item ? "active" : ""} onClick={() => setCategory(item)} key={item}>{item}</button>)}</div>
+    <div className="omni-mosaic">{visible.map((project, index) => <button className={`omni-card omni-${project.tone} omni-card-${index % 10}`} onClick={() => setActive(project)} key={project.title} aria-label={`Play ${project.title}`}>
+      <video src="/videos/seedance-swiipai-4k.mp4" muted loop playsInline preload="metadata" onMouseEnter={(event) => event.currentTarget.play().catch(() => {})} onMouseLeave={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} />
+      <span className="omni-tint" /><span className="omni-play"><Play fill="currentColor" size={22}/></span>
+      <span className="omni-card-meta"><small>OMNI · {project.category}</small><b>{project.title}</b></span>
+    </button>)}</div>
+    {active && <div className="omni-modal" role="dialog" aria-modal="true" aria-label={`${active.title} details`} onMouseDown={(event) => event.target === event.currentTarget && setActive(null)}>
+      <div className="omni-viewer"><button className="omni-close" onClick={() => setActive(null)} aria-label="Close"><X size={20}/></button>
+        <div className="omni-player"><video src="/videos/seedance-swiipai-4k.mp4" autoPlay controls playsInline /><span className="omni-watermark"><Logo compact/> OMNI</span></div>
+        <aside className="omni-details"><div className="omni-creator"><span>{active.avatar}</span><div><b>{active.creator}</b><small>{active.handle}</small></div></div>
+          <div><span className="eyebrow plain">OMNI CREATION</span><h3>{active.title}</h3><small className="omni-category">{active.category}</small></div>
+          <div className="omni-prompt"><b>Prompt</b><p>{active.prompt}</p></div>
+          <div className="omni-model"><span><Sparkles size={16}/></span><div><small>Created with</small><b>SwiipAI Omni</b></div><Check size={16}/></div>
+          <Link className="primary omni-remix" href={`/app/video?model=omni&prompt=${encodeURIComponent(active.prompt)}`}><Sparkles size={17}/> Get started with this prompt</Link>
+        </aside>
+      </div>
+    </div>}
+  </section>;
+}
+
 export function HomePage({ light, toggleTheme }: { light: boolean; toggleTheme: () => void }) {
   const [communityTab, setCommunityTab] = useState("Trending");
   return (
@@ -269,6 +316,8 @@ export function HomePage({ light, toggleTheme }: { light: boolean; toggleTheme: 
             ))}
           </div>
         </section>
+
+        <OmniInspirations />
 
         <section className="section capabilities">
           <div className="section-heading">
