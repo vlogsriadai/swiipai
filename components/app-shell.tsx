@@ -93,6 +93,13 @@ function Generator({ type, plan }: { type: "video" | "image" | "audio" | "motion
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [job, setJob] = useState<{ id?: string; status?: string; error?: string } | null>(null);
+  const [selectedModel, setSelectedModel] = useState(type === "video" ? "Swiip Motion 2.1" : type === "image" ? "Swiip Vision 3" : type === "audio" ? "Swiip Voice 2" : "Swiip Creative");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedPrompt = params.get("prompt");
+    if (sharedPrompt) setPrompt(sharedPrompt.slice(0, 2000));
+    if (type === "video" && params.get("model") === "omni") setSelectedModel("SwiipAI Omni");
+  }, [type]);
   const title = { video: "AI Video", image: "AI Image", audio: "AI Audio", motion: "Motion Control", lip: "Lip Sync", effects: "AI Effects" }[type];
   const requiredPlan = type === "lip" || type === "effects" ? "pro" : "basic";
   if (!canUse(plan, requiredPlan)) return <section className="entitlement-lock"><span><Lock size={25}/></span><h2>{title} requires {requiredPlan === "pro" ? "Pro or Max" : "an active plan"}</h2><p>Your dashboard only unlocks tools included with the subscription confirmed by Stripe or PayPal.</p><Link className="primary" href="/pricing">Compare plans</Link></section>;
@@ -141,7 +148,7 @@ function Generator({ type, plan }: { type: "video" | "image" | "audio" | "motion
           {(mode.includes("Image") || type === "motion" || type === "lip") && <button className="dropzone"><CloudUpload /><b>Drop your media here</b><span>PNG, JPG, MP4 · up to 200 MB</span></button>}
           <label className="prompt-label"><span>Prompt <button><WandSparkles size={13} /> Enhance</button></span><textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={type === "audio" ? "Write the words or describe the sound you want..." : "Describe your scene, subject, lighting and camera movement..."} /><small>{prompt.length} / 2,000</small></label>
           <div className="form-grid">
-            <label>Model<button>Swiip {type === "image" ? "Vision 3" : type === "audio" ? "Voice 2" : "Motion 2.1"} <ChevronDown /></button></label>
+            <label>Model<button>{selectedModel} <ChevronDown /></button></label>
             <label>Aspect ratio<button>{type === "audio" ? "48 kHz" : "16:9"} <ChevronDown /></button></label>
             <label>{type === "image" ? "Outputs" : "Duration"}<button>{type === "image" ? "4 images" : "8 seconds"} <ChevronDown /></button></label>
             <label>Quality<button>Pro <ChevronDown /></button></label>
