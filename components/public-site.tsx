@@ -10,6 +10,7 @@ import {
 import { Logo, ThemeButton } from "./brand";
 import { community, creativeTools, plans, publicNav, publicPages, tools } from "./data";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser";
+import { functionErrorMessage } from "../lib/function-error";
 
 function PublicHeader({ light, toggleTheme }: { light: boolean; toggleTheme: () => void }) {
   const [open, setOpen] = useState(false);
@@ -476,7 +477,9 @@ export function PricingPage({ light, toggleTheme }: { light: boolean; toggleThem
       headers: { "idempotency-key": idempotencyKey },
     });
     if (error || !data?.url) {
-      setCheckoutError(error?.message || data?.error || "Checkout is temporarily unavailable.");
+      setCheckoutError(error
+        ? await functionErrorMessage(error, "Checkout is temporarily unavailable.")
+        : data?.error || "Checkout is temporarily unavailable.");
       setCheckout("");
       return;
     }
