@@ -1,5 +1,5 @@
 import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
-import { idempotencyKey, json, requireUser } from "../_shared/core.ts";
+import { idempotencyKey, json, preflight, publicError, requireUser } from "../_shared/core.ts";
 
 const Input = z.object({
   plan_slug: z.enum(["basic", "pro", "max"]),
@@ -73,7 +73,8 @@ async function paypalCheckout(planId: string, orderId: string) {
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok");
+  const options = preflight(request);
+  if (options) return options;
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   try {
     const { client, user } = await requireUser(request);
@@ -107,7 +108,8 @@ Deno.serve(async (request) => {
     }).eq("id", order.id).eq("user_id", user.id);
     return json({ url });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "checkout_failed";
-    return json({ error: message }, message === "unauthorized" ? 401 : 400);
+    console.error("create-subscription-checkout failed", error);
+    const failure = publicError(error, "checkout_failed");
+    return json({ error: failure.message }, failure.status);
   }
 });
