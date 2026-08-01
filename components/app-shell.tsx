@@ -98,8 +98,11 @@ function Generator({ type, plan }: { type: "video" | "image" | "audio" | "motion
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sharedPrompt = params.get("prompt");
-    if (sharedPrompt) setPrompt(sharedPrompt.slice(0, 2000));
-    if (type === "video" && params.get("model") === "omni") setSelectedModel("SwiipAI Omni");
+    const frame = window.requestAnimationFrame(() => {
+      if (sharedPrompt) setPrompt(sharedPrompt.slice(0, 2000));
+      if (type === "video" && params.get("model") === "omni") setSelectedModel("SwiipAI Omni");
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [type]);
   const title = { video: "AI Video", image: "AI Image", audio: "AI Audio", motion: "Motion Control", lip: "Lip Sync", effects: "AI Effects" }[type];
   const requiredPlan = type === "lip" || type === "effects" ? "pro" : "basic";

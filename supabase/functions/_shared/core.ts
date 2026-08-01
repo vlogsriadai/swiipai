@@ -23,6 +23,9 @@ export function json(body: unknown, status = 200) {
 export function publicError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
   if (message === "unauthorized") return { message, status: 401 };
+  if (message === "forbidden" || message === "account_inactive" || message === "email_not_verified") {
+    return { message, status: 403 };
+  }
   if (message.includes("not_configured") || message === "server_configuration_missing") {
     return { message, status: 503 };
   }
@@ -45,6 +48,47 @@ export async function requireUser(request: Request) {
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) throw new Error("unauthorized");
   return { client, user: data.user };
+}
+
+export async function requirePermission(request: Request, permission: string) {
+  const { client, user } = await requireUser(request);
+  if (!user.email_confirmed_at) throw new Error("email_not_verified");
+
+  const { data: profile, error: profileError } = await client
+    .from("profiles")
+    .select("status")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileError || profile?.status !== "active") throw new Error("account_inactive");
+
+  const { data: assignments, error } = await client
+    .from("user_roles")
+    .select("roles!inner(slug,name,role_permissions(permissions!inner(slug)))")
+    .eq("user_id", user.id);
+  if (error) throw new Error("authorization_lookup_failed");
+
+  type PermissionLink = { permissions: { slug: string } | null };
+  type RoleRecord = { slug: string; name: string; role_permissions?: PermissionLink[] };
+  type Assignment = { roles: RoleRecord | RoleRecord[] | null };
+  const roleFor = (assignment: Assignment): RoleRecord | null =>
+    Array.isArray(assignment.roles) ? assignment.roles[0] ?? null : assignment.roles;
+
+  const typedAssignments = (assignments ?? []) as unknown as Assignment[];
+  const roles = typedAssignments.flatMap((assignment) => {
+    const role = roleFor(assignment);
+    return role ? [{ slug: role.slug, name: role.name }] : [];
+  });
+  const permissions = new Set<string>();
+  for (const assignment of typedAssignments) {
+    const role = roleFor(assignment);
+    for (const link of role?.role_permissions ?? []) {
+      if (link.permissions?.slug) permissions.add(link.permissions.slug);
+    }
+  }
+  const isSuperAdmin = roles.some((role) => role.slug === "super_admin");
+  if (!isSuperAdmin && !permissions.has(permission)) throw new Error("forbidden");
+
+  return { client, user, roles, permissions: [...permissions], isSuperAdmin };
 }
 
 export function idempotencyKey(request: Request) {

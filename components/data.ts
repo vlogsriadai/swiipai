@@ -47,6 +47,8 @@ export const appNav = [
 export const adminNav = [
   { label: "Overview", href: "/admin/dashboard", icon: Gauge },
   { label: "Users", href: "/admin/users", icon: Users },
+  { label: "Credits", href: "/admin/credits", icon: Sparkles },
+  { label: "Subscriptions", href: "/admin/subscriptions", icon: BadgeDollarSign },
   { label: "Generations", href: "/admin/generations", icon: Sparkles },
   { label: "Models", href: "/admin/models", icon: Bot },
   { label: "Providers", href: "/admin/providers", icon: Blocks },
