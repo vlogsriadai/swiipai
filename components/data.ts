@@ -1,6 +1,6 @@
 import {
   AudioLines, BadgeDollarSign, Blocks, Bot, Box, Brush, Clapperboard,
-  Clock3, Code2, CreditCard, Film, FolderKanban, Gauge, ImageIcon,
+  ChartNoAxesCombined, Clock3, Code2, CreditCard, Film, FolderKanban, Gauge, ImageIcon,
   KeyRound, LayoutDashboard, LifeBuoy, Megaphone, Mic2, Move3d, Palette,
   PanelsTopLeft, ScanFace, Settings2, ShieldCheck, Sparkles, Users, WandSparkles,
 } from "lucide-react";
@@ -46,6 +46,7 @@ export const appNav = [
 
 export const adminNav = [
   { label: "Overview", href: "/admin/dashboard", icon: Gauge },
+  { label: "Analytics", href: "/admin/analytics", icon: ChartNoAxesCombined },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Credits", href: "/admin/credits", icon: Sparkles },
   { label: "Subscriptions", href: "/admin/subscriptions", icon: BadgeDollarSign },
