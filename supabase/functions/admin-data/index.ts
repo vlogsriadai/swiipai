@@ -51,6 +51,30 @@ async function overview(client: any, days: number) {
   };
 }
 
+async function analytics(client: any, days: number) {
+  const count = Math.min(90, Math.max(1, days));
+  const since = new Date(Date.now() - (count - 1) * 86400000);
+  const [profiles, payments, jobs, credits] = await Promise.all([
+    client.from("profiles").select("created_at").gte("created_at", since.toISOString()),
+    client.from("payments").select("amount,status,created_at").eq("status", "paid").gte("created_at", since.toISOString()),
+    client.from("generation_jobs").select("created_at,status").gte("created_at", since.toISOString()),
+    client.from("credit_transactions").select("amount,direction,created_at").eq("direction", "debit").gte("created_at", since.toISOString()),
+  ]);
+  for (const result of [profiles, payments, jobs, credits]) if (result.error) throw result.error;
+  const key = (value: string) => value.slice(0, 10);
+  const dates = Array.from({length: count}, (_, index) => {
+    const date = new Date(since.getTime() + index * 86400000);
+    return date.toISOString().slice(0, 10);
+  });
+  return {days: count, points: dates.map(date => ({
+    date,
+    users: (profiles.data ?? []).filter((row: any) => key(row.created_at) === date).length,
+    revenue: (payments.data ?? []).filter((row: any) => key(row.created_at) === date).reduce((sum: number, row: any) => sum + money(row.amount), 0),
+    generations: (jobs.data ?? []).filter((row: any) => key(row.created_at) === date).length,
+    credits: Math.abs((credits.data ?? []).filter((row: any) => key(row.created_at) === date).reduce((sum: number, row: any) => sum + money(row.amount), 0)),
+  }))};
+}
+
 async function list(client: any, resource: string, body: any) {
   const page = pageNumber(body.page), limit = pageSize(body.limit), from = (page - 1) * limit, to = from + limit - 1;
   const search = String(body.search ?? "").trim();
@@ -87,6 +111,7 @@ Deno.serve(async (request) => {
     const permission = action === "adjust_credits" ? "credits.manage" : action.startsWith("user_") ? "users.edit" : action.startsWith("subscription_") || action.startsWith("plan_") ? "subscriptions.manage" : action === "overview" ? "admin.access" : body.resource === "payments" ? "payments.view" : "admin.access";
     const { client, user, roles } = await requirePermission(request, permission);
     if (action === "overview") return json(await overview(client, Number(body.days) || 30));
+    if (action === "analytics") return json(await analytics(client, Number(body.days) || 30));
     if (action === "list") return json(await list(client, String(body.resource), body));
     if (action === "user_status") {
       if (body.user_id === user.id && body.status !== "active") throw new Error("cannot_suspend_self");
